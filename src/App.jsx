@@ -1,4 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { supabase } from "./supabaseClient";
+
+const defaultUsers = [
+  { id: "GUN", name: "GUN", mark: "G", role: "admin" },
+  { id: "EUN", name: "EUN", mark: "E", role: "user" },
+];
 
 const defaultCrops = [
   { id: 1, name: "고추", memo: "비료 주기 확인 필요", lastWork: "물주기" },
@@ -10,9 +16,147 @@ const quickWorks = ["물주기", "비료", "방제", "수확"];
 const workTypes = ["물주기", "비료", "파종", "정식", "방제", "수확", "기타"];
 const weatherTypes = ["맑음", "흐림", "비", "눈", "바람 많음"];
 
+function fromDiaryRow(row) {
+  return {
+    id: row.id,
+    date: row.date,
+    crop: row.crop,
+    workType: row.work_type,
+    weather: row.weather,
+    content: row.content,
+    memo: row.memo || "",
+    harvestAmount: row.harvest_amount || "",
+    authorId: row.author_id || "",
+    authorMark: row.author_mark || "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function toDiaryRow(diary) {
+  return {
+    id: diary.id,
+    date: diary.date,
+    crop: diary.crop,
+    work_type: diary.workType,
+    weather: diary.weather,
+    content: diary.content,
+    memo: diary.memo || null,
+    harvest_amount: diary.harvestAmount || null,
+    author_id: diary.authorId || null,
+    author_mark: diary.authorMark || null,
+    created_at: diary.createdAt || new Date().toISOString(),
+    updated_at: diary.updatedAt || null,
+  };
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState("home");
+  
+  const [currentUser, setCurrentUser] = useState(() => {
+  const savedUser = localStorage.getItem("farm-current-user");
+
+  if (!savedUser) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(savedUser);
+  } catch {
+    return null;
+  }
+});
+ 
+const [users, setUsers] = useState(() => {
+  const savedUsers = localStorage.getItem("farm-users");
+
+  if (!savedUsers) {
+    return defaultUsers;
+  }
+
+  try {
+    return JSON.parse(savedUsers);
+  } catch {
+    return defaultUsers;
+  }
+});
+
+function saveUsers(nextUsers) {
+  setUsers(nextUsers);
+  localStorage.setItem("farm-users", JSON.stringify(nextUsers));
+}
+
+function addUser(userId) {
+  const trimmedUserId = userId.trim().toUpperCase();
+
+  if (!trimmedUserId) {
+    alert("아이디를 입력해주세요.");
+    return;
+  }
+
+  const alreadyExists = users.some((user) => user.id === trimmedUserId);
+
+  if (alreadyExists) {
+    alert("이미 등록된 아이디입니다.");
+    return;
+  }
+
+  const newUser = {
+    id: trimmedUserId,
+    name: trimmedUserId,
+    mark: trimmedUserId.slice(0, 1),
+    role: "user",
+  };
+
+  saveUsers([...users, newUser]);
+}
+
+function loginUser(userId) {
+  const trimmedUserId = userId.trim().toUpperCase();
+
+  if (!trimmedUserId) {
+    alert("아이디를 입력해주세요.");
+    return;
+  }
+
+  const matchedUser = users.find((user) => user.id === trimmedUserId);
+
+  if (!matchedUser) {
+    alert("등록된 아이디가 아닙니다. 관리자에게 아이디 추가를 요청하세요.");
+    return;
+  }
+
+  setCurrentUser(matchedUser);
+  localStorage.setItem("farm-current-user", JSON.stringify(matchedUser));
+}
+
+async function testSupabaseConnection() {
+  const { data, error } = await supabase.from("farm_users").select("*");
+
+  if (error) {
+    console.error("Supabase 연결 실패:", error);
+    alert("Supabase 연결 실패");
+    return;
+  }
+
+  console.log("Supabase 연결 성공:", data);
+  alert("Supabase 연결 성공");
+}
+
+function logoutUser() {
+  const isConfirmed = confirm("사용자를 변경할까요?");
+
+  if (!isConfirmed) {
+    return;
+  }
+
+  setCurrentUser(null);
+  localStorage.removeItem("farm-current-user");
+  setActiveTab("home");
+}
+
   const [editingDiary, setEditingDiary] = useState(null);
+  const [selectedQuickWork, setSelectedQuickWork] = useState(null);
 
   const [crops, setCrops] = useState(() => {
     const savedCrops = localStorage.getItem("farm-crops");
@@ -28,33 +172,50 @@ function App() {
     }
   });
 
-  const [diaries, setDiaries] = useState(() => {
-    const savedDiaries = localStorage.getItem("farm-diaries");
+  const [diaries, setDiaries] = useState([]);
 
-    if (!savedDiaries) {
-      return [];
+  async function loadDiaries() {
+    const { data, error } = await supabase
+      .from("diaries")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("농사일지 불러오기 실패:", error);
+      alert("농사일지를 불러오지 못했습니다.");
+      return;
     }
 
-    try {
-      return JSON.parse(savedDiaries);
-    } catch {
-      return [];
-    }
-  });
+    setDiaries(data.map(fromDiaryRow));
+}
 
-  function saveDiaries(nextDiaries) {
-    setDiaries(nextDiaries);
-    localStorage.setItem("farm-diaries", JSON.stringify(nextDiaries));
-  }
-
+useEffect(() => {
+  loadDiaries();
+}, []);
+  
   function saveCrops(nextCrops) {
     setCrops(nextCrops);
     localStorage.setItem("farm-crops", JSON.stringify(nextCrops));
   }
 
-  function addDiary(newDiary) {
-    const nextDiaries = [newDiary, ...diaries];
-    saveDiaries(nextDiaries);
+  function startQuickWrite(workType) {
+  setEditingDiary(null);
+  setSelectedQuickWork(workType);
+  setActiveTab("write");
+  }
+
+  async function addDiary(newDiary) {
+    const { error } = await supabase
+      .from("diaries")
+      .insert(toDiaryRow(newDiary));
+
+    if (error) {
+      console.error("농사일지 저장 실패:", error);
+      alert("농사일지를 저장하지 못했습니다.");
+      return;
+    }
+
+    setDiaries((prevDiaries) => [newDiary, ...prevDiaries]);
     setActiveTab("list");
   }
   function startEditDiary(diary) {
@@ -62,13 +223,26 @@ function App() {
   setActiveTab("write");
 }
 
-function updateDiary(updatedDiary) {
-  const nextDiaries = diaries.map((diary) =>
-    diary.id === updatedDiary.id ? updatedDiary : diary
+async function updateDiary(updatedDiary) {
+  const { error } = await supabase
+    .from("diaries")
+    .update(toDiaryRow(updatedDiary))
+    .eq("id", updatedDiary.id);
+
+  if (error) {
+    console.error("농사일지 수정 실패:", error);
+    alert("농사일지를 수정하지 못했습니다.");
+    return;
+  }
+
+  setDiaries((prevDiaries) =>
+    prevDiaries.map((diary) =>
+      diary.id === updatedDiary.id ? updatedDiary : diary
+    )
   );
 
-  saveDiaries(nextDiaries);
   setEditingDiary(null);
+  setSelectedQuickWork(null);
   setActiveTab("list");
 }
 
@@ -77,15 +251,27 @@ function cancelEditDiary() {
   setActiveTab("list");
 }
 
-  function deleteDiary(id) {
+  async function deleteDiary(id) {
     const isConfirmed = confirm("이 농사일지를 삭제할까요?");
 
     if (!isConfirmed) {
       return;
     }
 
-    const nextDiaries = diaries.filter((diary) => diary.id !== id);
-    saveDiaries(nextDiaries);
+    const { error } = await supabase
+      .from("diaries")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      console.error("농사일지 삭제 실패:", error);
+      alert("농사일지를 삭제하지 못했습니다.");
+      return;
+    }
+
+    setDiaries((prevDiaries) =>
+      prevDiaries.filter((diary) => diary.id !== id)
+    );
   }
 
   function addCrop(cropName) {
@@ -120,7 +306,12 @@ function cancelEditDiary() {
     day: "numeric",
     weekday: "long",
   });
-
+  const isQuickWorkTab = workTypes.includes(activeTab);
+  const currentScreen = isQuickWorkTab ? "write" : activeTab;
+  const currentQuickWork = isQuickWorkTab ? activeTab : selectedQuickWork;
+if (!currentUser) {
+  return <LoginScreen loginUser={loginUser} users={users} />;
+}
   return (
     <div className="min-h-screen bg-slate-100">
       <div className="mx-auto flex min-h-screen w-full max-w-7xl bg-white">
@@ -132,7 +323,12 @@ function cancelEditDiary() {
             </h1>
           </div>
 
-          <SidebarNav activeTab={activeTab} setActiveTab={setActiveTab} />
+          <SidebarNav
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            currentUser={currentUser}
+            logoutUser={logoutUser}
+          />
         </aside>
 
         <div className="flex min-h-screen flex-1 flex-col">
@@ -144,15 +340,27 @@ function cancelEditDiary() {
           </header>
 
           <main className="flex-1 px-5 py-5 pb-24 md:px-8 lg:px-10">
-            {activeTab === "home" && (
+            <p className="mb-4 rounded-xl bg-red-50 px-4 py-2 text-sm text-red-600">
+              현재 탭: {activeTab}
+            </p>
+            <button
+              type="button"
+              onClick={testSupabaseConnection}
+              className="mb-4 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600"
+            >
+              Supabase 연결 테스트
+            </button>
+
+            {currentScreen === "home" && (
               <Dashboard
                 setActiveTab={setActiveTab}
+                startQuickWrite={startQuickWrite}
                 diaries={diaries}
                 crops={crops}
               />
             )}
 
-            {activeTab === "write" && (
+            {currentScreen === "write" && (
               <DiaryForm
                 addDiary={addDiary}
                 updateDiary={updateDiary}
@@ -160,10 +368,13 @@ function cancelEditDiary() {
                 cancelEditDiary={cancelEditDiary}
                 setActiveTab={setActiveTab}
                 crops={crops}
+                selectedQuickWork={currentQuickWork}
+                setSelectedQuickWork={setSelectedQuickWork}
+                currentUser={currentUser}
               />
             )}
 
-            {activeTab === "list" && (
+            {currentScreen === "list" && (
               <DiaryList
                 diaries={diaries}
                 deleteDiary={deleteDiary}
@@ -172,11 +383,17 @@ function cancelEditDiary() {
               />
             )}
 
-            {activeTab === "crops" && (
+            {currentScreen === "crops" && (
               <CropManage
                 diaries={diaries}
                 crops={crops}
                 addCrop={addCrop}
+              />
+            )}
+            {currentScreen === "users" && currentUser.role === "admin" && (
+              <UserManage
+                users={users}
+                addUser={addUser}
               />
             )}
           </main>
@@ -188,17 +405,66 @@ function cancelEditDiary() {
   );
 }
 
-function Dashboard({ setActiveTab, diaries, crops }) {
+function Dashboard({ setActiveTab, startQuickWrite, diaries, crops }) {
   const recentDiaries = diaries.slice(0, 5);
 
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth();
+
+  const monthlyDiaries = diaries.filter((diary) => {
+    const diaryDate = new Date(diary.date);
+    return (
+      diaryDate.getFullYear() === currentYear &&
+      diaryDate.getMonth() === currentMonth
+    );
+  });
+
+  const harvestDiaries = diaries.filter(
+    (diary) => diary.workType === "수확"
+  );
+
+  const stats = [
+    {
+      label: "전체 기록",
+      value: `${diaries.length}건`,
+    },
+    {
+      label: "이번 달 기록",
+      value: `${monthlyDiaries.length}건`,
+    },
+    {
+      label: "수확 기록",
+      value: `${harvestDiaries.length}건`,
+    },
+    {
+      label: "등록 작물",
+      value: `${crops.length}개`,
+    },
+  ];
+
   return (
-    <div className="space-y-6">
-      <section className="rounded-3xl bg-slate-900 p-5 text-white shadow-sm">
+  <div className="space-y-6">
+    <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      {stats.map((stat) => (
+        <div
+          key={stat.label}
+          className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"
+        >
+          <p className="text-sm font-medium text-slate-500">{stat.label}</p>
+          <p className="mt-2 text-2xl font-bold text-slate-900">
+            {stat.value}
+          </p>
+        </div>
+      ))}
+    </section>
+
+    <section className="rounded-3xl bg-slate-900 p-5 text-white shadow-sm">
         <p className="text-sm text-slate-300">오늘 작업을 빠르게 기록하세요</p>
         <h2 className="mt-2 text-xl font-semibold">오늘 농사일지 작성</h2>
 
         <button
-          onClick={() => setActiveTab("write")}
+          onClick={() => setActiveTab("물주기")}
           className="mt-5 w-full rounded-2xl bg-white px-4 py-3 font-semibold text-slate-900 md:w-auto md:px-8"
         >
           + 오늘 일지 작성하기
@@ -215,7 +481,7 @@ function Dashboard({ setActiveTab, diaries, crops }) {
             {quickWorks.map((work) => (
               <button
                 key={work}
-                onClick={() => setActiveTab("write")}
+                onClick={() => startQuickWrite(work)}
                 className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-left shadow-sm active:scale-[0.98]"
               >
                 <span className="text-lg font-semibold text-slate-900">
@@ -278,13 +544,18 @@ function DiaryForm({
   cancelEditDiary,
   setActiveTab,
   crops,
+  selectedQuickWork = null,
+  setSelectedQuickWork = () => {},
+  currentUser,
 }) {
   const firstCropName = crops.length > 0 ? crops[0].name : "";
 
   const [form, setForm] = useState({
     date: editingDiary ? editingDiary.date : new Date().toISOString().slice(0, 10),
     crop: editingDiary ? editingDiary.crop : firstCropName,
-    workType: editingDiary ? editingDiary.workType : "물주기",
+    workType: editingDiary
+      ? editingDiary.workType
+      : selectedQuickWork || "물주기",
     weather: editingDiary ? editingDiary.weather : "맑음",
     content: editingDiary ? editingDiary.content : "",
     memo: editingDiary ? editingDiary.memo : "",
@@ -323,16 +594,20 @@ function DiaryForm({
       };
 
       updateDiary(updatedDiary);
+      setSelectedQuickWork(null);
       return;
     }
 
     const newDiary = {
       id: Date.now(),
       ...form,
+      authorId: currentUser.id,
+      authorMark: currentUser.mark,
       createdAt: new Date().toISOString(),
     };
 
     addDiary(newDiary);
+    setSelectedQuickWork(null);
 
     setForm({
       date: new Date().toISOString().slice(0, 10),
@@ -346,6 +621,8 @@ function DiaryForm({
   }
 
   function handleCancel() {
+    setSelectedQuickWork(null);
+
     if (isEditMode) {
       cancelEditDiary();
       return;
@@ -438,7 +715,7 @@ function DiaryForm({
               className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-slate-500"
             />
           </Field>
-               )}
+        )}
 
         <Field label="작업 내용">
           <textarea
@@ -658,7 +935,17 @@ function DiaryCard({ diary, deleteDiary, startEditDiary }) {
     <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm text-slate-500">{diary.date}</p>
+          <div className="flex items-center gap-2">
+            {diary.authorMark && (
+              <span className="rounded-full bg-slate-900 px-2 py-1 text-xs font-bold text-white">
+                {"<<"}
+                {diary.authorMark}
+                {">>"}
+              </span>
+            )}
+
+            <p className="text-sm text-slate-500">{diary.date}</p>
+          </div>
 
           <h3 className="mt-1 text-lg font-semibold text-slate-900">
             {diary.crop} · {diary.workType}
@@ -732,34 +1019,57 @@ function EmptyBox({ message }) {
   );
 }
 
-function SidebarNav({ activeTab, setActiveTab }) {
+function SidebarNav({ activeTab, setActiveTab, currentUser, logoutUser }) {
   const tabs = [
     { id: "home", label: "홈" },
     { id: "write", label: "작성" },
     { id: "list", label: "목록" },
     { id: "crops", label: "작물" },
+    ...(currentUser?.role === "admin"
+    ? [{ id: "users", label: "사용자" }]
+    : []),
   ];
 
   return (
-    <nav className="space-y-2">
-      {tabs.map((tab) => {
-        const isActive = activeTab === tab.id;
+    <>
+      <div className="mb-5 rounded-3xl border border-slate-200 bg-slate-50 p-4">
+        <p className="text-xs text-slate-500">현재 사용자</p>
 
-        return (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`w-full rounded-2xl px-4 py-3 text-left text-sm font-semibold ${
-              isActive
-                ? "bg-slate-900 text-white"
-                : "text-slate-600 hover:bg-slate-100"
-            }`}
-          >
-            {tab.label}
-          </button>
-        );
-      })}
-    </nav>
+        <p className="mt-1 text-lg font-bold text-slate-900">
+          {"<<"}
+          {currentUser.mark}
+          {">>"} {currentUser.id}
+        </p>
+
+        <button
+          type="button"
+          onClick={logoutUser}
+          className="mt-3 rounded-full text-xs font-medium text-slate-500 hover:text-slate-900"
+        >
+          사용자 변경
+        </button>
+      </div>
+
+      <nav className="space-y-2">
+        {tabs.map((tab) => {
+          const isActive = activeTab === tab.id;
+
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`w-full rounded-2xl px-4 py-3 text-left text-sm font-semibold ${
+                isActive
+                  ? "bg-slate-900 text-white"
+                  : "text-slate-600 hover:bg-slate-100"
+              }`}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
+      </nav>
+    </>
   );
 }
 
@@ -791,6 +1101,129 @@ function BottomNav({ activeTab, setActiveTab }) {
         })}
       </div>
     </nav>
+  );
+}
+
+function LoginScreen({ loginUser, users }) {
+  const [userId, setUserId] = useState("");
+
+  function handleSubmit(event) {
+    event.preventDefault();
+    loginUser(userId);
+  }
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-100 px-5">
+      <form
+        onSubmit={handleSubmit}
+        className="w-full max-w-sm rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"
+      >
+        <p className="text-sm text-slate-500">가족 농사일지</p>
+
+        <h1 className="mt-2 text-2xl font-bold text-slate-900">
+          로그인
+        </h1>
+
+        <p className="mt-2 text-sm text-slate-500">
+          등록된 가족 아이디만 사용할 수 있습니다.
+        </p>
+
+        <div className="mt-5">
+          <label className="mb-2 block text-sm font-semibold text-slate-700">
+            아이디
+          </label>
+
+          <input
+            value={userId}
+            onChange={(event) => setUserId(event.target.value.toUpperCase())}
+            placeholder="아이디 입력"
+            autoFocus
+            className="w-full rounded-2xl border border-slate-200 px-4 py-3 uppercase outline-none focus:border-slate-500"
+          />
+
+          <button
+            type="submit"
+            className="mt-3 w-full rounded-2xl bg-slate-900 px-4 py-3 font-semibold text-white"
+          >
+            로그인
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function UserManage({ users, addUser }) {
+  const [userId, setUserId] = useState("");
+
+  function handleSubmit(event) {
+    event.preventDefault();
+
+    addUser(userId);
+    setUserId("");
+  }
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-xl font-bold text-slate-900">사용자 관리</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          관리자만 가족 아이디를 추가할 수 있습니다.
+        </p>
+      </div>
+
+      <form
+        onSubmit={handleSubmit}
+        className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"
+      >
+        <label className="text-sm font-semibold text-slate-700">
+          새 사용자 아이디 추가
+        </label>
+
+        <div className="mt-3 flex flex-col gap-3 md:flex-row">
+          <input
+            value={userId}
+            onChange={(event) => setUserId(event.target.value.toUpperCase())}
+            placeholder="예: MIN"
+            className="min-w-0 flex-1 rounded-2xl border border-slate-200 px-4 py-3 uppercase outline-none focus:border-slate-500"
+          />
+
+          <button
+            type="submit"
+            className="rounded-2xl bg-slate-900 px-5 py-3 font-semibold text-white"
+          >
+            추가
+          </button>
+        </div>
+      </form>
+
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {users.map((user) => (
+          <div
+            key={user.id}
+            className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-lg font-bold text-slate-900">
+                  {"<<"}
+                  {user.mark}
+                  {">>"} {user.id}
+                </p>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  권한: {user.role === "admin" ? "관리자" : "사용자"}
+                </p>
+              </div>
+
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+                {user.role}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
