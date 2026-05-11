@@ -26,7 +26,8 @@ function fromDiaryRow(row) {
     content: row.content,
     memo: row.memo || "",
     harvestAmount: row.harvest_amount || "",
-    imageUrls: row.image_urls || [],
+    imageUrl: row.image_url || "",
+    imageUrls: Array.isArray(row.image_urls) ? row.image_urls : [],
     authorId: row.author_id || "",
     authorMark: row.author_mark || "",
     createdAt: row.created_at,
@@ -44,6 +45,7 @@ function toDiaryRow(diary) {
     content: diary.content,
     memo: diary.memo || null,
     harvest_amount: diary.harvestAmount || null,
+    image_url: diary.imageUrl || null,
     image_urls: diary.imageUrls || [],
     author_id: diary.authorId || null,
     author_mark: diary.authorMark || null,
@@ -54,108 +56,34 @@ function toDiaryRow(diary) {
 
 function App() {
   const [activeTab, setActiveTab] = useState("home");
-  
+
   const [currentUser, setCurrentUser] = useState(() => {
-  const savedUser = localStorage.getItem("farm-current-user");
+    const savedUser = localStorage.getItem("farm-current-user");
 
-  if (!savedUser) {
-    return null;
-  }
+    if (!savedUser) {
+      return null;
+    }
 
-  try {
-    return JSON.parse(savedUser);
-  } catch {
-    return null;
-  }
-});
- 
-const [users, setUsers] = useState(() => {
-  const savedUsers = localStorage.getItem("farm-users");
+    try {
+      return JSON.parse(savedUser);
+    } catch {
+      return null;
+    }
+  });
 
-  if (!savedUsers) {
-    return defaultUsers;
-  }
+  const [users, setUsers] = useState(() => {
+    const savedUsers = localStorage.getItem("farm-users");
 
-  try {
-    return JSON.parse(savedUsers);
-  } catch {
-    return defaultUsers;
-  }
-});
+    if (!savedUsers) {
+      return defaultUsers;
+    }
 
-function saveUsers(nextUsers) {
-  setUsers(nextUsers);
-  localStorage.setItem("farm-users", JSON.stringify(nextUsers));
-}
-
-function addUser(userId) {
-  const trimmedUserId = userId.trim().toUpperCase();
-
-  if (!trimmedUserId) {
-    alert("아이디를 입력해주세요.");
-    return;
-  }
-
-  const alreadyExists = users.some((user) => user.id === trimmedUserId);
-
-  if (alreadyExists) {
-    alert("이미 등록된 아이디입니다.");
-    return;
-  }
-
-  const newUser = {
-    id: trimmedUserId,
-    name: trimmedUserId,
-    mark: trimmedUserId.slice(0, 1),
-    role: "user",
-  };
-
-  saveUsers([...users, newUser]);
-}
-
-function loginUser(userId) {
-  const trimmedUserId = userId.trim().toUpperCase();
-
-  if (!trimmedUserId) {
-    alert("아이디를 입력해주세요.");
-    return;
-  }
-
-  const matchedUser = users.find((user) => user.id === trimmedUserId);
-
-  if (!matchedUser) {
-    alert("등록된 아이디가 아닙니다. 관리자에게 아이디 추가를 요청하세요.");
-    return;
-  }
-
-  setCurrentUser(matchedUser);
-  localStorage.setItem("farm-current-user", JSON.stringify(matchedUser));
-}
-
-async function testSupabaseConnection() {
-  const { data, error } = await supabase.from("farm_users").select("*");
-
-  if (error) {
-    console.error("Supabase 연결 실패:", error);
-    alert("Supabase 연결 실패");
-    return;
-  }
-
-  console.log("Supabase 연결 성공:", data);
-  alert("Supabase 연결 성공");
-}
-
-function logoutUser() {
-  const isConfirmed = confirm("사용자를 변경할까요?");
-
-  if (!isConfirmed) {
-    return;
-  }
-
-  setCurrentUser(null);
-  localStorage.removeItem("farm-current-user");
-  setActiveTab("home");
-}
+    try {
+      return JSON.parse(savedUsers);
+    } catch {
+      return defaultUsers;
+    }
+  });
 
   const [editingDiary, setEditingDiary] = useState(null);
   const [selectedQuickWork, setSelectedQuickWork] = useState(null);
@@ -189,27 +117,86 @@ function logoutUser() {
     }
 
     setDiaries(data.map(fromDiaryRow));
-}
+  }
 
-useEffect(() => {
-  loadDiaries();
-}, []);
-  
+  useEffect(() => {
+    loadDiaries();
+  }, []);
+
+  function saveUsers(nextUsers) {
+    setUsers(nextUsers);
+    localStorage.setItem("farm-users", JSON.stringify(nextUsers));
+  }
+
+  function addUser(userId) {
+    const trimmedUserId = userId.trim().toUpperCase();
+
+    if (!trimmedUserId) {
+      alert("아이디를 입력해주세요.");
+      return;
+    }
+
+    const alreadyExists = users.some((user) => user.id === trimmedUserId);
+
+    if (alreadyExists) {
+      alert("이미 등록된 아이디입니다.");
+      return;
+    }
+
+    const newUser = {
+      id: trimmedUserId,
+      name: trimmedUserId,
+      mark: trimmedUserId.slice(0, 1),
+      role: "user",
+    };
+
+    saveUsers([...users, newUser]);
+  }
+
+  function loginUser(userId) {
+    const trimmedUserId = userId.trim().toUpperCase();
+
+    if (!trimmedUserId) {
+      alert("아이디를 입력해주세요.");
+      return;
+    }
+
+    const matchedUser = users.find((user) => user.id === trimmedUserId);
+
+    if (!matchedUser) {
+      alert("등록된 아이디가 아닙니다. 관리자에게 아이디 추가를 요청하세요.");
+      return;
+    }
+
+    setCurrentUser(matchedUser);
+    localStorage.setItem("farm-current-user", JSON.stringify(matchedUser));
+  }
+
+  function logoutUser() {
+    const isConfirmed = confirm("사용자를 변경할까요?");
+
+    if (!isConfirmed) {
+      return;
+    }
+
+    setCurrentUser(null);
+    localStorage.removeItem("farm-current-user");
+    setActiveTab("home");
+  }
+
   function saveCrops(nextCrops) {
     setCrops(nextCrops);
     localStorage.setItem("farm-crops", JSON.stringify(nextCrops));
   }
 
   function startQuickWrite(workType) {
-  setEditingDiary(null);
-  setSelectedQuickWork(workType);
-  setActiveTab("write");
+    setEditingDiary(null);
+    setSelectedQuickWork(workType || "물주기");
+    setActiveTab("write");
   }
 
   async function addDiary(newDiary) {
-    const { error } = await supabase
-      .from("diaries")
-      .insert(toDiaryRow(newDiary));
+    const { error } = await supabase.from("diaries").insert(toDiaryRow(newDiary));
 
     if (error) {
       console.error("농사일지 저장 실패:", error);
@@ -220,38 +207,41 @@ useEffect(() => {
     setDiaries((prevDiaries) => [newDiary, ...prevDiaries]);
     setActiveTab("list");
   }
+
   function startEditDiary(diary) {
-  setEditingDiary(diary);
-  setActiveTab("write");
-}
-
-async function updateDiary(updatedDiary) {
-  const { error } = await supabase
-    .from("diaries")
-    .update(toDiaryRow(updatedDiary))
-    .eq("id", updatedDiary.id);
-
-  if (error) {
-    console.error("농사일지 수정 실패:", error);
-    alert("농사일지를 수정하지 못했습니다.");
-    return;
+    setEditingDiary(diary);
+    setSelectedQuickWork(null);
+    setActiveTab("write");
   }
 
-  setDiaries((prevDiaries) =>
-    prevDiaries.map((diary) =>
-      diary.id === updatedDiary.id ? updatedDiary : diary
-    )
-  );
+  async function updateDiary(updatedDiary) {
+    const { error } = await supabase
+      .from("diaries")
+      .update(toDiaryRow(updatedDiary))
+      .eq("id", updatedDiary.id);
 
-  setEditingDiary(null);
-  setSelectedQuickWork(null);
-  setActiveTab("list");
-}
+    if (error) {
+      console.error("농사일지 수정 실패:", error);
+      alert("농사일지를 수정하지 못했습니다.");
+      return;
+    }
 
-function cancelEditDiary() {
-  setEditingDiary(null);
-  setActiveTab("list");
-}
+    setDiaries((prevDiaries) =>
+      prevDiaries.map((diary) =>
+        diary.id === updatedDiary.id ? updatedDiary : diary
+      )
+    );
+
+    setEditingDiary(null);
+    setSelectedQuickWork(null);
+    setActiveTab("list");
+  }
+
+  function cancelEditDiary() {
+    setEditingDiary(null);
+    setSelectedQuickWork(null);
+    setActiveTab("list");
+  }
 
   async function deleteDiary(id) {
     const isConfirmed = confirm("이 농사일지를 삭제할까요?");
@@ -260,10 +250,7 @@ function cancelEditDiary() {
       return;
     }
 
-    const { error } = await supabase
-      .from("diaries")
-      .delete()
-      .eq("id", id);
+    const { error } = await supabase.from("diaries").delete().eq("id", id);
 
     if (error) {
       console.error("농사일지 삭제 실패:", error);
@@ -271,9 +258,7 @@ function cancelEditDiary() {
       return;
     }
 
-    setDiaries((prevDiaries) =>
-      prevDiaries.filter((diary) => diary.id !== id)
-    );
+    setDiaries((prevDiaries) => prevDiaries.filter((diary) => diary.id !== id));
   }
 
   function addCrop(cropName) {
@@ -298,8 +283,7 @@ function cancelEditDiary() {
       lastWork: "기록 없음",
     };
 
-    const nextCrops = [...crops, newCrop];
-    saveCrops(nextCrops);
+    saveCrops([...crops, newCrop]);
   }
 
   const today = new Date().toLocaleDateString("ko-KR", {
@@ -308,21 +292,22 @@ function cancelEditDiary() {
     day: "numeric",
     weekday: "long",
   });
+
   const isQuickWorkTab = workTypes.includes(activeTab);
   const currentScreen = isQuickWorkTab ? "write" : activeTab;
   const currentQuickWork = isQuickWorkTab ? activeTab : selectedQuickWork;
-if (!currentUser) {
-  return <LoginScreen loginUser={loginUser} users={users} />;
-}
+
+  if (!currentUser) {
+    return <LoginScreen loginUser={loginUser} users={users} />;
+  }
+
   return (
     <div className="min-h-screen bg-slate-100">
       <div className="mx-auto flex min-h-screen w-full max-w-7xl bg-white">
         <aside className="hidden w-64 shrink-0 border-r border-slate-200 bg-white p-5 md:block">
           <div className="mb-8">
             <p className="text-sm text-slate-500">{today}</p>
-            <h1 className="mt-2 text-2xl font-bold text-slate-900">
-              농사일지
-            </h1>
+            <h1 className="mt-2 text-2xl font-bold text-slate-900">농사일지</h1>
           </div>
 
           <SidebarNav
@@ -336,27 +321,15 @@ if (!currentUser) {
         <div className="flex min-h-screen flex-1 flex-col">
           <header className="sticky top-0 z-10 border-b border-slate-200 bg-white px-5 py-4 md:hidden">
             <p className="text-sm text-slate-500">{today}</p>
-            <h1 className="mt-1 text-2xl font-bold text-slate-900">
-              농사일지
-            </h1>
+            <h1 className="mt-1 text-2xl font-bold text-slate-900">농사일지</h1>
           </header>
 
           <main className="flex-1 px-5 py-5 pb-24 md:px-8 lg:px-10">
-            <p className="mb-4 rounded-xl bg-red-50 px-4 py-2 text-sm text-red-600">
-              현재 탭: {activeTab}
-            </p>
-            <button
-              type="button"
-              onClick={testSupabaseConnection}
-              className="mb-4 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600"
-            >
-              Supabase 연결 테스트
-            </button>
-
             {currentScreen === "home" && (
               <Dashboard
                 setActiveTab={setActiveTab}
                 startQuickWrite={startQuickWrite}
+                startEditDiary={startEditDiary}
                 diaries={diaries}
                 crops={crops}
               />
@@ -386,17 +359,11 @@ if (!currentUser) {
             )}
 
             {currentScreen === "crops" && (
-              <CropManage
-                diaries={diaries}
-                crops={crops}
-                addCrop={addCrop}
-              />
+              <CropManage diaries={diaries} crops={crops} addCrop={addCrop} />
             )}
+
             {currentScreen === "users" && currentUser.role === "admin" && (
-              <UserManage
-                users={users}
-                addUser={addUser}
-              />
+              <UserManage users={users} addUser={addUser} />
             )}
           </main>
 
@@ -407,7 +374,7 @@ if (!currentUser) {
   );
 }
 
-function Dashboard({ setActiveTab, startQuickWrite, diaries, crops }) {
+function Dashboard({ setActiveTab, startQuickWrite, startEditDiary, diaries, crops }) {
   const recentDiaries = diaries.slice(0, 5);
 
   const now = new Date();
@@ -422,51 +389,35 @@ function Dashboard({ setActiveTab, startQuickWrite, diaries, crops }) {
     );
   });
 
-  const harvestDiaries = diaries.filter(
-    (diary) => diary.workType === "수확"
-  );
+  const harvestDiaries = diaries.filter((diary) => diary.workType === "수확");
 
   const stats = [
-    {
-      label: "전체 기록",
-      value: `${diaries.length}건`,
-    },
-    {
-      label: "이번 달 기록",
-      value: `${monthlyDiaries.length}건`,
-    },
-    {
-      label: "수확 기록",
-      value: `${harvestDiaries.length}건`,
-    },
-    {
-      label: "등록 작물",
-      value: `${crops.length}개`,
-    },
+    { label: "전체 기록", value: `${diaries.length}건` },
+    { label: "이번 달 기록", value: `${monthlyDiaries.length}건` },
+    { label: "수확 기록", value: `${harvestDiaries.length}건` },
+    { label: "등록 작물", value: `${crops.length}개` },
   ];
 
   return (
-  <div className="space-y-6">
-    <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-      {stats.map((stat) => (
-        <div
-          key={stat.label}
-          className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"
-        >
-          <p className="text-sm font-medium text-slate-500">{stat.label}</p>
-          <p className="mt-2 text-2xl font-bold text-slate-900">
-            {stat.value}
-          </p>
-        </div>
-      ))}
-    </section>
+    <div className="space-y-6">
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {stats.map((stat) => (
+          <div
+            key={stat.label}
+            className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"
+          >
+            <p className="text-sm font-medium text-slate-500">{stat.label}</p>
+            <p className="mt-2 text-2xl font-bold text-slate-900">{stat.value}</p>
+          </div>
+        ))}
+      </section>
 
-    <section className="rounded-3xl bg-slate-900 p-5 text-white shadow-sm">
+      <section className="rounded-3xl bg-slate-900 p-5 text-white shadow-sm">
         <p className="text-sm text-slate-300">오늘 작업을 빠르게 기록하세요</p>
         <h2 className="mt-2 text-xl font-semibold">오늘 농사일지 작성</h2>
 
         <button
-          onClick={() => setActiveTab("물주기")}
+          onClick={() => startQuickWrite("물주기")}
           className="mt-5 w-full rounded-2xl bg-white px-4 py-3 font-semibold text-slate-900 md:w-auto md:px-8"
         >
           + 오늘 일지 작성하기
@@ -475,9 +426,7 @@ function Dashboard({ setActiveTab, startQuickWrite, diaries, crops }) {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <section>
-          <h2 className="mb-3 text-lg font-semibold text-slate-900">
-            빠른 작업
-          </h2>
+          <h2 className="mb-3 text-lg font-semibold text-slate-900">빠른 작업</h2>
 
           <div className="grid grid-cols-2 gap-3">
             {quickWorks.map((work) => (
@@ -486,9 +435,7 @@ function Dashboard({ setActiveTab, startQuickWrite, diaries, crops }) {
                 onClick={() => startQuickWrite(work)}
                 className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-left shadow-sm active:scale-[0.98]"
               >
-                <span className="text-lg font-semibold text-slate-900">
-                  {work}
-                </span>
+                <span className="text-lg font-semibold text-slate-900">{work}</span>
                 <p className="mt-1 text-sm text-slate-500">바로 기록하기</p>
               </button>
             ))}
@@ -511,7 +458,11 @@ function Dashboard({ setActiveTab, startQuickWrite, diaries, crops }) {
               <EmptyBox message="아직 저장된 농사일지가 없습니다." />
             ) : (
               recentDiaries.map((diary) => (
-                <DiaryCard key={diary.id} diary={diary} />
+                <DiaryCard
+                  key={diary.id}
+                  diary={diary}
+                  startEditDiary={startEditDiary}
+                />
               ))
             )}
           </div>
@@ -552,13 +503,13 @@ function DiaryForm({
 }) {
   const firstCropName = crops.length > 0 ? crops[0].name : "";
   const [photoFiles, setPhotoFiles] = useState([]);
+  const [isListening, setIsListening] = useState(false);
+  const [listeningTarget, setListeningTarget] = useState("");
 
   const [form, setForm] = useState({
     date: editingDiary ? editingDiary.date : new Date().toISOString().slice(0, 10),
     crop: editingDiary ? editingDiary.crop : firstCropName,
-    workType: editingDiary
-      ? editingDiary.workType
-      : selectedQuickWork || "물주기",
+    workType: editingDiary ? editingDiary.workType : selectedQuickWork || "물주기",
     weather: editingDiary ? editingDiary.weather : "맑음",
     content: editingDiary ? editingDiary.content : "",
     memo: editingDiary ? editingDiary.memo : "",
@@ -577,15 +528,68 @@ function DiaryForm({
       [name]: value,
     }));
   }
-    async function uploadPhotosIfNeeded() {
-      const existingImageUrls = form.imageUrls || [];
 
-      if (photoFiles.length === 0) {
-        return existingImageUrls.length > 0
-          ? existingImageUrls
-          : form.imageUrl
-            ? [form.imageUrl]
-            : [];
+  function startVoiceInput(fieldName) {
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      alert("이 브라우저에서는 음성 입력을 지원하지 않습니다. Chrome 또는 Edge에서 시도해보세요.");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = "ko-KR";
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      setIsListening(true);
+      setListeningTarget(fieldName);
+    };
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+
+      setForm((prevForm) => {
+        const previousText = prevForm[fieldName] || "";
+        const nextText = previousText ? `${previousText} ${transcript}` : transcript;
+
+        return {
+          ...prevForm,
+          [fieldName]: nextText,
+        };
+      });
+    };
+
+    recognition.onerror = (event) => {
+      console.error("음성 입력 오류:", event.error);
+      alert("음성 입력 중 오류가 발생했습니다.");
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+      setListeningTarget("");
+    };
+
+    try {
+      recognition.start();
+    } catch (error) {
+      console.error("음성 입력 시작 실패:", error);
+      setIsListening(false);
+      setListeningTarget("");
+    }
+  }
+
+  async function uploadPhotosIfNeeded() {
+    const existingImageUrls = Array.isArray(form.imageUrls)
+      ? form.imageUrls
+      : form.imageUrl
+        ? [form.imageUrl]
+        : [];
+
+    if (!Array.isArray(photoFiles) || photoFiles.length === 0) {
+      return existingImageUrls;
     }
 
     const uploadedUrls = [];
@@ -642,7 +646,7 @@ function DiaryForm({
         updatedAt: new Date().toISOString(),
       };
 
-      updateDiary(updatedDiary);
+      await updateDiary(updatedDiary);
       setSelectedQuickWork(null);
       return;
     }
@@ -657,7 +661,7 @@ function DiaryForm({
       createdAt: new Date().toISOString(),
     };
 
-    addDiary(newDiary);
+    await addDiary(newDiary);
     setSelectedQuickWork(null);
 
     setForm({
@@ -668,10 +672,11 @@ function DiaryForm({
       content: "",
       memo: "",
       harvestAmount: "",
+      imageUrl: "",
       imageUrls: [],
     });
 
-    setPhotoFiles(null);
+    setPhotoFiles([]);
   }
 
   function handleCancel() {
@@ -780,6 +785,17 @@ function DiaryForm({
         )}
 
         <Field label="작업 내용">
+          <div className="mb-2 flex justify-end">
+            <button
+              type="button"
+              onClick={() => startVoiceInput("content")}
+              disabled={isListening}
+              className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+            >
+              {isListening && listeningTarget === "content" ? "듣는 중..." : "음성 입력"}
+            </button>
+          </div>
+
           <textarea
             name="content"
             value={form.content}
@@ -802,9 +818,9 @@ function DiaryForm({
             className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-slate-500"
           />
 
-          {photoFiles.length > 0 && (
+          {selectedPhotoCount > 0 && (
             <p className="mt-2 text-sm text-slate-500">
-              선택한 사진: {photoFiles.length}장
+              선택한 사진: {selectedPhotoCount}장
             </p>
           )}
 
@@ -826,6 +842,17 @@ function DiaryForm({
         </Field>
 
         <Field label="메모">
+          <div className="mb-2 flex justify-end">
+            <button
+              type="button"
+              onClick={() => startVoiceInput("memo")}
+              disabled={isListening}
+              className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+            >
+              {isListening && listeningTarget === "memo" ? "듣는 중..." : "음성 입력"}
+            </button>
+          </div>
+
           <textarea
             name="memo"
             value={form.memo}
@@ -869,11 +896,8 @@ function DiaryList({ diaries, deleteDiary, startEditDiary, crops }) {
       diary.content.includes(searchText) ||
       diary.memo.includes(searchText);
 
-    const matchesCrop =
-      cropFilter === "전체 작물" || diary.crop === cropFilter;
-
-    const matchesWork =
-      workFilter === "전체 작업" || diary.workType === workFilter;
+    const matchesCrop = cropFilter === "전체 작물" || diary.crop === cropFilter;
+    const matchesWork = workFilter === "전체 작업" || diary.workType === workFilter;
 
     return matchesSearch && matchesCrop && matchesWork;
   });
@@ -919,9 +943,7 @@ function DiaryList({ diaries, deleteDiary, startEditDiary, crops }) {
       </div>
 
       <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-        <p className="text-sm text-slate-500">
-          총 {filteredDiaries.length}개의 기록
-        </p>
+        <p className="text-sm text-slate-500">총 {filteredDiaries.length}개의 기록</p>
       </div>
 
       <div className="space-y-3">
@@ -947,7 +969,6 @@ function CropManage({ diaries, crops, addCrop }) {
 
   function handleAddCrop(event) {
     event.preventDefault();
-
     addCrop(cropName);
     setCropName("");
   }
@@ -965,9 +986,7 @@ function CropManage({ diaries, crops, addCrop }) {
         onSubmit={handleAddCrop}
         className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"
       >
-        <label className="text-sm font-semibold text-slate-700">
-          새 작물 추가
-        </label>
+        <label className="text-sm font-semibold text-slate-700">새 작물 추가</label>
 
         <div className="mt-3 flex flex-col gap-3 md:flex-row">
           <input
@@ -1012,9 +1031,10 @@ function CropCard({ crop, diaries }) {
           <p className="mt-2 text-sm text-slate-600">
             {latestDiary ? latestDiary.content : crop.memo}
           </p>
+
           {latestDiary?.workType === "수확" && latestDiary.harvestAmount && (
             <p className="mt-2 text-sm font-medium text-emerald-700">
-               수확량: {latestDiary.harvestAmount}
+              수확량: {latestDiary.harvestAmount}
             </p>
           )}
         </div>
@@ -1028,10 +1048,17 @@ function CropCard({ crop, diaries }) {
 }
 
 function DiaryCard({ diary, deleteDiary, startEditDiary }) {
+  const displayImageUrls =
+    diary.imageUrls?.length > 0
+      ? diary.imageUrls
+      : diary.imageUrl
+        ? [diary.imageUrl]
+        : [];
+
   return (
     <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             {diary.authorMark && (
               <span className="rounded-full bg-slate-900 px-2 py-1 text-xs font-bold text-white">
@@ -1049,25 +1076,23 @@ function DiaryCard({ diary, deleteDiary, startEditDiary }) {
           </h3>
 
           <p className="mt-2 text-sm text-slate-600">{diary.content}</p>
-          
+
           {diary.workType === "수확" && diary.harvestAmount && (
             <p className="mt-2 inline-flex rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">
               수확량: {diary.harvestAmount}
             </p>
           )}
 
-          {(diary.imageUrls?.length > 0 || diary.imageUrl) && (
+          {displayImageUrls.length > 0 && (
             <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3">
-              {(diary.imageUrls?.length > 0 ? diary.imageUrls : [diary.imageUrl]).map(
-                (imageUrl) => (
-                  <img
-                    key={imageUrl}
-                    src={imageUrl}
-                    alt="농사일지 사진"
-                    className="h-36 w-full rounded-2xl border border-slate-200 object-cover"
-                  />
-                )
-              )}
+              {displayImageUrls.map((imageUrl) => (
+                <img
+                  key={imageUrl}
+                  src={imageUrl}
+                  alt="농사일지 사진"
+                  className="h-36 w-full rounded-2xl border border-slate-200 object-cover"
+                />
+              ))}
             </div>
           )}
 
@@ -1082,7 +1107,7 @@ function DiaryCard({ diary, deleteDiary, startEditDiary }) {
           )}
         </div>
 
-        <div className="flex flex-col items-end gap-2">
+        <div className="flex shrink-0 flex-col items-end gap-2">
           <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
             {diary.weather}
           </span>
@@ -1115,9 +1140,7 @@ function DiaryCard({ diary, deleteDiary, startEditDiary }) {
 function Field({ label, children }) {
   return (
     <label className="block">
-      <span className="mb-2 block text-sm font-semibold text-slate-700">
-        {label}
-      </span>
+      <span className="mb-2 block text-sm font-semibold text-slate-700">{label}</span>
       {children}
     </label>
   );
@@ -1137,9 +1160,7 @@ function SidebarNav({ activeTab, setActiveTab, currentUser, logoutUser }) {
     { id: "write", label: "작성" },
     { id: "list", label: "목록" },
     { id: "crops", label: "작물" },
-    ...(currentUser?.role === "admin"
-    ? [{ id: "users", label: "사용자" }]
-    : []),
+    ...(currentUser?.role === "admin" ? [{ id: "users", label: "사용자" }] : []),
   ];
 
   return (
@@ -1216,7 +1237,7 @@ function BottomNav({ activeTab, setActiveTab }) {
   );
 }
 
-function LoginScreen({ loginUser, users }) {
+function LoginScreen({ loginUser }) {
   const [userId, setUserId] = useState("");
 
   function handleSubmit(event) {
@@ -1232,9 +1253,7 @@ function LoginScreen({ loginUser, users }) {
       >
         <p className="text-sm text-slate-500">가족 농사일지</p>
 
-        <h1 className="mt-2 text-2xl font-bold text-slate-900">
-          로그인
-        </h1>
+        <h1 className="mt-2 text-2xl font-bold text-slate-900">로그인</h1>
 
         <p className="mt-2 text-sm text-slate-500">
           등록된 가족 아이디만 사용할 수 있습니다.
@@ -1270,7 +1289,6 @@ function UserManage({ users, addUser }) {
 
   function handleSubmit(event) {
     event.preventDefault();
-
     addUser(userId);
     setUserId("");
   }
