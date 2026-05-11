@@ -20,7 +20,6 @@ function correctVoiceText(text) {
   const corrections = [
     ["물 주기", "물주기"],
     ["물 주게", "물주기"],
-    ["물 주게", "물주기"],
     ["물 줬기", "물주기"],
     ["방재", "방제"],
     ["농약 살포", "방제"],
@@ -137,13 +136,10 @@ function App() {
   });
 
   const [users, setUsers] = useState(defaultUsers);
-
+  const [crops, setCrops] = useState(defaultCrops);
+  const [diaries, setDiaries] = useState([]);
   const [editingDiary, setEditingDiary] = useState(null);
   const [selectedQuickWork, setSelectedQuickWork] = useState(null);
-
-  const [crops, setCrops] = useState(defaultCrops);
-
-  const [diaries, setDiaries] = useState([]);
 
   async function loadUsers() {
     const { data, error } = await supabase
@@ -195,39 +191,39 @@ function App() {
   }, []);
 
   async function addUser(userId) {
-  const trimmedUserId = userId.trim().toUpperCase();
+    const trimmedUserId = userId.trim().toUpperCase();
 
-  if (!trimmedUserId) {
-    alert("아이디를 입력해주세요.");
-    return;
+    if (!trimmedUserId) {
+      alert("아이디를 입력해주세요.");
+      return;
+    }
+
+    const alreadyExists = users.some((user) => user.id === trimmedUserId);
+
+    if (alreadyExists) {
+      alert("이미 등록된 아이디입니다.");
+      return;
+    }
+
+    const newUser = {
+      id: trimmedUserId,
+      name: trimmedUserId,
+      mark: trimmedUserId.slice(0, 1),
+      role: "user",
+    };
+
+    const { error } = await supabase
+      .from("farm_users")
+      .insert(toUserRow(newUser));
+
+    if (error) {
+      console.error("사용자 추가 실패:", error);
+      alert("사용자를 추가하지 못했습니다.");
+      return;
+    }
+
+    setUsers((prevUsers) => [...prevUsers, newUser]);
   }
-
-  const alreadyExists = users.some((user) => user.id === trimmedUserId);
-
-  if (alreadyExists) {
-    alert("이미 등록된 아이디입니다.");
-    return;
-  }
-
-  const newUser = {
-    id: trimmedUserId,
-    name: trimmedUserId,
-    mark: trimmedUserId.slice(0, 1),
-    role: "user",
-  };
-
-  const { error } = await supabase
-    .from("farm_users")
-    .insert(toUserRow(newUser));
-
-  if (error) {
-    console.error("사용자 추가 실패:", error);
-    alert("사용자를 추가하지 못했습니다.");
-    return;
-  }
-
-  setUsers((prevUsers) => [...prevUsers, newUser]);
-}
 
   function loginUser(userId) {
     const trimmedUserId = userId.trim().toUpperCase();
@@ -267,7 +263,9 @@ function App() {
   }
 
   async function addDiary(newDiary) {
-    const { error } = await supabase.from("diaries").insert(toDiaryRow(newDiary));
+    const { error } = await supabase
+      .from("diaries")
+      .insert(toDiaryRow(newDiary));
 
     if (error) {
       console.error("농사일지 저장 실패:", error);
@@ -354,9 +352,7 @@ function App() {
       lastWork: "기록 없음",
     };
 
-    const { error } = await supabase
-      .from("crops")
-      .insert(toCropRow(newCrop));
+    const { error } = await supabase.from("crops").insert(toCropRow(newCrop));
 
     if (error) {
       console.error("작물 추가 실패:", error);
@@ -365,6 +361,82 @@ function App() {
     }
 
     setCrops((prevCrops) => [...prevCrops, newCrop]);
+  }
+
+  async function updateCrop(cropId, newName) {
+    const trimmedName = newName.trim();
+
+    if (!trimmedName) {
+      alert("작물명을 입력해주세요.");
+      return false;
+    }
+
+    const alreadyExists = crops.some(
+      (crop) => crop.name === trimmedName && crop.id !== cropId
+    );
+
+    if (alreadyExists) {
+      alert("이미 등록된 작물명입니다.");
+      return false;
+    }
+
+    const targetCrop = crops.find((crop) => crop.id === cropId);
+
+    if (!targetCrop) {
+      alert("작물을 찾을 수 없습니다.");
+      return false;
+    }
+
+    const { error } = await supabase
+      .from("crops")
+      .update({ name: trimmedName })
+      .eq("id", cropId);
+
+    if (error) {
+      console.error("작물 수정 실패:", error);
+      alert("작물명을 수정하지 못했습니다.");
+      return false;
+    }
+
+    setCrops((prevCrops) =>
+      prevCrops.map((crop) =>
+        crop.id === cropId ? { ...crop, name: trimmedName } : crop
+      )
+    );
+
+    return true;
+  }
+
+  async function deleteCrop(cropId) {
+    const targetCrop = crops.find((crop) => crop.id === cropId);
+
+    if (!targetCrop) {
+      alert("작물을 찾을 수 없습니다.");
+      return;
+    }
+
+    const hasDiary = diaries.some((diary) => diary.crop === targetCrop.name);
+
+    if (hasDiary) {
+      alert("이 작물로 작성된 농사일지가 있어서 삭제할 수 없습니다.");
+      return;
+    }
+
+    const isConfirmed = confirm(`"${targetCrop.name}" 작물을 삭제할까요?`);
+
+    if (!isConfirmed) {
+      return;
+    }
+
+    const { error } = await supabase.from("crops").delete().eq("id", cropId);
+
+    if (error) {
+      console.error("작물 삭제 실패:", error);
+      alert("작물을 삭제하지 못했습니다.");
+      return;
+    }
+
+    setCrops((prevCrops) => prevCrops.filter((crop) => crop.id !== cropId));
   }
 
   const today = new Date().toLocaleDateString("ko-KR", {
@@ -440,7 +512,13 @@ function App() {
             )}
 
             {currentScreen === "crops" && (
-              <CropManage diaries={diaries} crops={crops} addCrop={addCrop} />
+              <CropManage
+                diaries={diaries}
+                crops={crops}
+                addCrop={addCrop}
+                updateCrop={updateCrop}
+                deleteCrop={deleteCrop}
+              />
             )}
 
             {currentScreen === "users" && currentUser.role === "admin" && (
@@ -1070,7 +1148,7 @@ function DiaryList({ diaries, deleteDiary, startEditDiary, crops }) {
   );
 }
 
-function CropManage({ diaries, crops, addCrop }) {
+function CropManage({ diaries, crops, addCrop, updateCrop, deleteCrop }) {
   const [cropName, setCropName] = useState("");
 
   function handleAddCrop(event) {
@@ -1113,41 +1191,117 @@ function CropManage({ diaries, crops, addCrop }) {
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {crops.map((crop) => (
-          <CropCard key={crop.id} crop={crop} diaries={diaries} />
+          <CropCard
+            key={crop.id}
+            crop={crop}
+            diaries={diaries}
+            updateCrop={updateCrop}
+            deleteCrop={deleteCrop}
+          />
         ))}
       </div>
     </div>
   );
 }
 
-function CropCard({ crop, diaries }) {
+function CropCard({ crop, diaries, updateCrop, deleteCrop }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [cropName, setCropName] = useState(crop.name);
+
   const cropDiaries = diaries.filter((diary) => diary.crop === crop.name);
   const latestDiary = cropDiaries[0];
+  const canManage = updateCrop && deleteCrop;
+
+  async function handleUpdateCrop(event) {
+    event.preventDefault();
+
+    const isSuccess = await updateCrop(crop.id, cropName);
+
+    if (isSuccess) {
+      setIsEditing(false);
+    }
+  }
+
+  function handleCancelEdit() {
+    setCropName(crop.name);
+    setIsEditing(false);
+  }
 
   return (
     <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-lg font-semibold text-slate-900">{crop.name}</h3>
+        <div className="min-w-0 flex-1">
+          {isEditing ? (
+            <form onSubmit={handleUpdateCrop} className="space-y-3">
+              <input
+                value={cropName}
+                onChange={(event) => setCropName(event.target.value)}
+                className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-lg font-semibold outline-none focus:border-slate-500"
+              />
 
-          <p className="mt-1 text-sm text-slate-500">
-            최근 작업: {latestDiary ? latestDiary.workType : crop.lastWork}
-          </p>
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white"
+                >
+                  저장
+                </button>
 
-          <p className="mt-2 text-sm text-slate-600">
-            {latestDiary ? latestDiary.content : crop.memo}
-          </p>
+                <button
+                  type="button"
+                  onClick={handleCancelEdit}
+                  className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600"
+                >
+                  취소
+                </button>
+              </div>
+            </form>
+          ) : (
+            <>
+              <h3 className="text-lg font-semibold text-slate-900">{crop.name}</h3>
 
-          {latestDiary?.workType === "수확" && latestDiary.harvestAmount && (
-            <p className="mt-2 text-sm font-medium text-emerald-700">
-              수확량: {latestDiary.harvestAmount}
-            </p>
+              <p className="mt-1 text-sm text-slate-500">
+                최근 작업: {latestDiary ? latestDiary.workType : crop.lastWork}
+              </p>
+
+              <p className="mt-2 text-sm text-slate-600">
+                {latestDiary ? latestDiary.content : crop.memo}
+              </p>
+
+              {latestDiary?.workType === "수확" && latestDiary.harvestAmount && (
+                <p className="mt-2 text-sm font-medium text-emerald-700">
+                  수확량: {latestDiary.harvestAmount}
+                </p>
+              )}
+            </>
           )}
         </div>
 
-        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
-          {cropDiaries.length}건
-        </span>
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+            {cropDiaries.length}건
+          </span>
+
+          {canManage && !isEditing && (
+            <>
+              <button
+                type="button"
+                onClick={() => setIsEditing(true)}
+                className="rounded-full px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
+              >
+                수정
+              </button>
+
+              <button
+                type="button"
+                onClick={() => deleteCrop(crop.id)}
+                className="rounded-full px-3 py-1 text-xs font-medium text-red-500 hover:bg-red-50"
+              >
+                삭제
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -1246,7 +1400,9 @@ function DiaryCard({ diary, deleteDiary, startEditDiary }) {
 function Field({ label, children }) {
   return (
     <label className="block">
-      <span className="mb-2 block text-sm font-semibold text-slate-700">{label}</span>
+      <span className="mb-2 block text-sm font-semibold text-slate-700">
+        {label}
+      </span>
       {children}
     </label>
   );
