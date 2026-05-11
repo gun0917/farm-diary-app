@@ -45,6 +45,42 @@ function correctVoiceText(text) {
   return correctedText;
 }
 
+function fromUserRow(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    mark: row.mark,
+    role: row.role,
+  };
+}
+
+function toUserRow(user) {
+  return {
+    id: user.id,
+    name: user.name,
+    mark: user.mark,
+    role: user.role,
+  };
+}
+
+function fromCropRow(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    memo: row.memo || "",
+    lastWork: row.last_work || "기록 없음",
+  };
+}
+
+function toCropRow(crop) {
+  return {
+    id: crop.id,
+    name: crop.name,
+    memo: crop.memo || null,
+    last_work: crop.lastWork || null,
+  };
+}
+
 function fromDiaryRow(row) {
   return {
     id: row.id,
@@ -100,38 +136,42 @@ function App() {
     }
   });
 
-  const [users, setUsers] = useState(() => {
-    const savedUsers = localStorage.getItem("farm-users");
-
-    if (!savedUsers) {
-      return defaultUsers;
-    }
-
-    try {
-      return JSON.parse(savedUsers);
-    } catch {
-      return defaultUsers;
-    }
-  });
+  const [users, setUsers] = useState(defaultUsers);
 
   const [editingDiary, setEditingDiary] = useState(null);
   const [selectedQuickWork, setSelectedQuickWork] = useState(null);
 
-  const [crops, setCrops] = useState(() => {
-    const savedCrops = localStorage.getItem("farm-crops");
-
-    if (!savedCrops) {
-      return defaultCrops;
-    }
-
-    try {
-      return JSON.parse(savedCrops);
-    } catch {
-      return defaultCrops;
-    }
-  });
+  const [crops, setCrops] = useState(defaultCrops);
 
   const [diaries, setDiaries] = useState([]);
+
+  async function loadUsers() {
+    const { data, error } = await supabase
+      .from("farm_users")
+      .select("*")
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      console.error("사용자 불러오기 실패:", error);
+      return;
+    }
+
+    setUsers(data.map(fromUserRow));
+  }
+
+  async function loadCrops() {
+    const { data, error } = await supabase
+      .from("crops")
+      .select("*")
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      console.error("작물 불러오기 실패:", error);
+      return;
+    }
+
+    setCrops(data.map(fromCropRow));
+  }
 
   async function loadDiaries() {
     const { data, error } = await supabase
@@ -149,38 +189,45 @@ function App() {
   }
 
   useEffect(() => {
+    loadUsers();
+    loadCrops();
     loadDiaries();
   }, []);
 
-  function saveUsers(nextUsers) {
-    setUsers(nextUsers);
-    localStorage.setItem("farm-users", JSON.stringify(nextUsers));
+  async function addUser(userId) {
+  const trimmedUserId = userId.trim().toUpperCase();
+
+  if (!trimmedUserId) {
+    alert("아이디를 입력해주세요.");
+    return;
   }
 
-  function addUser(userId) {
-    const trimmedUserId = userId.trim().toUpperCase();
+  const alreadyExists = users.some((user) => user.id === trimmedUserId);
 
-    if (!trimmedUserId) {
-      alert("아이디를 입력해주세요.");
-      return;
-    }
-
-    const alreadyExists = users.some((user) => user.id === trimmedUserId);
-
-    if (alreadyExists) {
-      alert("이미 등록된 아이디입니다.");
-      return;
-    }
-
-    const newUser = {
-      id: trimmedUserId,
-      name: trimmedUserId,
-      mark: trimmedUserId.slice(0, 1),
-      role: "user",
-    };
-
-    saveUsers([...users, newUser]);
+  if (alreadyExists) {
+    alert("이미 등록된 아이디입니다.");
+    return;
   }
+
+  const newUser = {
+    id: trimmedUserId,
+    name: trimmedUserId,
+    mark: trimmedUserId.slice(0, 1),
+    role: "user",
+  };
+
+  const { error } = await supabase
+    .from("farm_users")
+    .insert(toUserRow(newUser));
+
+  if (error) {
+    console.error("사용자 추가 실패:", error);
+    alert("사용자를 추가하지 못했습니다.");
+    return;
+  }
+
+  setUsers((prevUsers) => [...prevUsers, newUser]);
+}
 
   function loginUser(userId) {
     const trimmedUserId = userId.trim().toUpperCase();
@@ -211,11 +258,6 @@ function App() {
     setCurrentUser(null);
     localStorage.removeItem("farm-current-user");
     setActiveTab("home");
-  }
-
-  function saveCrops(nextCrops) {
-    setCrops(nextCrops);
-    localStorage.setItem("farm-crops", JSON.stringify(nextCrops));
   }
 
   function startQuickWrite(workType) {
@@ -290,7 +332,7 @@ function App() {
     setDiaries((prevDiaries) => prevDiaries.filter((diary) => diary.id !== id));
   }
 
-  function addCrop(cropName) {
+  async function addCrop(cropName) {
     const trimmedName = cropName.trim();
 
     if (!trimmedName) {
@@ -312,7 +354,17 @@ function App() {
       lastWork: "기록 없음",
     };
 
-    saveCrops([...crops, newCrop]);
+    const { error } = await supabase
+      .from("crops")
+      .insert(toCropRow(newCrop));
+
+    if (error) {
+      console.error("작물 추가 실패:", error);
+      alert("작물을 추가하지 못했습니다.");
+      return;
+    }
+
+    setCrops((prevCrops) => [...prevCrops, newCrop]);
   }
 
   const today = new Date().toLocaleDateString("ko-KR", {
