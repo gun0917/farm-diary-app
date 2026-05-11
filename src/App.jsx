@@ -16,6 +16,35 @@ const quickWorks = ["물주기", "비료", "방제", "수확"];
 const workTypes = ["물주기", "비료", "파종", "정식", "방제", "수확", "기타"];
 const weatherTypes = ["맑음", "흐림", "비", "눈", "바람 많음"];
 
+function correctVoiceText(text) {
+  const corrections = [
+    ["물 주기", "물주기"],
+    ["물 주게", "물주기"],
+    ["물 주게", "물주기"],
+    ["물 줬기", "물주기"],
+    ["방재", "방제"],
+    ["농약 살포", "방제"],
+    ["비료 주기", "비료주기"],
+    ["퇴비", "비료"],
+    ["고추 밭", "고추밭"],
+    ["토마토 밭", "토마토밭"],
+    ["상추 밭", "상추밭"],
+    ["수확함", "수확 완료"],
+    ["완료함", "완료"],
+    ["확인함", "확인"],
+    ["지주대", "지지대"],
+    ["지줏대", "지지대"],
+  ];
+
+  let correctedText = text.trim();
+
+  corrections.forEach(([wrongWord, rightWord]) => {
+    correctedText = correctedText.replaceAll(wrongWord, rightWord);
+  });
+
+  return correctedText;
+}
+
 function fromDiaryRow(row) {
   return {
     id: row.id,
@@ -375,6 +404,7 @@ function App() {
 }
 
 function Dashboard({ setActiveTab, startQuickWrite, startEditDiary, diaries, crops }) {
+  const [showStatsDetail, setShowStatsDetail] = useState(false);
   const recentDiaries = diaries.slice(0, 5);
 
   const now = new Date();
@@ -400,16 +430,37 @@ function Dashboard({ setActiveTab, startQuickWrite, startEditDiary, diaries, cro
 
   return (
     <div className="space-y-6">
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {stats.map((stat) => (
-          <div
-            key={stat.label}
-            className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"
-          >
-            <p className="text-sm font-medium text-slate-500">{stat.label}</p>
-            <p className="mt-2 text-2xl font-bold text-slate-900">{stat.value}</p>
+      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-slate-500">기록 통계</p>
+            <p className="mt-2 text-2xl font-bold text-slate-900">
+              전체 {diaries.length}건
+            </p>
+            <p className="mt-1 text-sm text-slate-500">
+              이번 달 {monthlyDiaries.length}건 · 수확 {harvestDiaries.length}건
+            </p>
           </div>
-        ))}
+
+          <button
+            type="button"
+            onClick={() => setShowStatsDetail((prev) => !prev)}
+            className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+          >
+            {showStatsDetail ? "접기" : "자세히"}
+          </button>
+        </div>
+
+        {showStatsDetail && (
+          <div className="mt-4 grid gap-3 md:grid-cols-4">
+            {stats.map((stat) => (
+              <div key={stat.label} className="rounded-2xl bg-slate-50 p-3">
+                <p className="text-xs font-medium text-slate-500">{stat.label}</p>
+                <p className="mt-1 text-lg font-bold text-slate-900">{stat.value}</p>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="rounded-3xl bg-slate-900 p-5 text-white shadow-sm">
@@ -550,10 +601,13 @@ function DiaryForm({
 
     recognition.onresult = (event) => {
       const transcript = event.results[0][0].transcript;
+      const correctedTranscript = correctVoiceText(transcript);
 
       setForm((prevForm) => {
         const previousText = prevForm[fieldName] || "";
-        const nextText = previousText ? `${previousText} ${transcript}` : transcript;
+        const nextText = previousText
+          ? `${previousText} ${correctedTranscript}`
+          : correctedTranscript;
 
         return {
           ...prevForm,
