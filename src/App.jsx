@@ -26,6 +26,7 @@ function fromDiaryRow(row) {
     content: row.content,
     memo: row.memo || "",
     harvestAmount: row.harvest_amount || "",
+    imageUrl: row.image_url || "",
     authorId: row.author_id || "",
     authorMark: row.author_mark || "",
     createdAt: row.created_at,
@@ -43,6 +44,7 @@ function toDiaryRow(diary) {
     content: diary.content,
     memo: diary.memo || null,
     harvest_amount: diary.harvestAmount || null,
+    image_url: diary.imageUrl || null,
     author_id: diary.authorId || null,
     author_mark: diary.authorMark || null,
     created_at: diary.createdAt || new Date().toISOString(),
@@ -549,6 +551,7 @@ function DiaryForm({
   currentUser,
 }) {
   const firstCropName = crops.length > 0 ? crops[0].name : "";
+  const [photoFile, setPhotoFile] = useState(null);
 
   const [form, setForm] = useState({
     date: editingDiary ? editingDiary.date : new Date().toISOString().slice(0, 10),
@@ -560,6 +563,7 @@ function DiaryForm({
     content: editingDiary ? editingDiary.content : "",
     memo: editingDiary ? editingDiary.memo : "",
     harvestAmount: editingDiary ? editingDiary.harvestAmount || "" : "",
+    imageUrl: editingDiary ? editingDiary.imageUrl || "" : "",
   });
 
   const isEditMode = Boolean(editingDiary);
@@ -572,8 +576,35 @@ function DiaryForm({
       [name]: value,
     }));
   }
+  async function uploadPhotoIfNeeded() {
+    if (!photoFile) {
+      return form.imageUrl;
+    }
 
-  function handleSubmit(event) {
+    const fileExt = photoFile.name.split(".").pop();
+    const fileName = `${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2)}.${fileExt}`;
+    const filePath = `diaries/${fileName}`;
+
+    const { error } = await supabase.storage
+      .from("diary-photos")
+      .upload(filePath, photoFile);
+
+    if (error) {
+      console.error("사진 업로드 실패:", error);
+      alert("사진을 업로드하지 못했습니다.");
+      return form.imageUrl;
+    }
+
+    const { data } = supabase.storage
+      .from("diary-photos")
+      .getPublicUrl(filePath);
+
+    return data.publicUrl;
+  }
+
+  async function handleSubmit(event) {
     event.preventDefault();
 
     if (!form.crop) {
@@ -586,10 +617,13 @@ function DiaryForm({
       return;
     }
 
+    const imageUrl = await uploadPhotoIfNeeded();
+ 
     if (isEditMode) {
       const updatedDiary = {
         ...editingDiary,
         ...form,
+        imageUrl,
         updatedAt: new Date().toISOString(),
       };
 
@@ -601,6 +635,7 @@ function DiaryForm({
     const newDiary = {
       id: Date.now(),
       ...form,
+      imageUrl,
       authorId: currentUser.id,
       authorMark: currentUser.mark,
       createdAt: new Date().toISOString(),
@@ -617,7 +652,10 @@ function DiaryForm({
       content: "",
       memo: "",
       harvestAmount: "",
+      imageUrl: "",
     });
+
+    setPhotoFile(null);
   }
 
   function handleCancel() {
@@ -726,6 +764,38 @@ function DiaryForm({
             placeholder="예: 오전에 고추밭 물주기 완료"
             className="w-full resize-none rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-slate-500"
           />
+        </Field>
+
+        <Field label="사진 첨부">
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+
+              if (file) {
+                setPhotoFile(file);
+              }
+            }}
+            className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-slate-500"
+          />
+
+          {photoFile && (
+            <p className="mt-2 text-sm text-slate-500">
+              선택한 사진: {photoFile.name}
+            </p>
+          )}
+
+          {!photoFile && form.imageUrl && (
+            <div className="mt-3">
+              <p className="mb-2 text-sm text-slate-500">기존 사진</p>
+              <img
+                src={form.imageUrl}
+                alt="기존 농사일지 사진"
+                className="max-h-64 rounded-2xl border border-slate-200 object-cover"
+              />
+            </div>
+          )}
         </Field>
 
         <Field label="메모">
@@ -957,6 +1027,14 @@ function DiaryCard({ diary, deleteDiary, startEditDiary }) {
             <p className="mt-2 inline-flex rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">
               수확량: {diary.harvestAmount}
             </p>
+          )}
+
+          {diary.imageUrl && (
+            <img
+              src={diary.imageUrl}
+              alt="농사일지 사진"
+              className="mt-3 max-h-72 w-full rounded-2xl border border-slate-200 object-cover"
+            />
           )}
 
           {diary.memo && (
